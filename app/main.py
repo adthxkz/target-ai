@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import os
@@ -128,6 +128,54 @@ async def health_check():
 async def test_endpoint():
     """Тестовый эндпоинт"""
     return {"message": "Test endpoint works!", "timestamp": str(datetime.now())}
+
+@app.get("/privacy-policy", response_class=HTMLResponse)
+async def privacy_policy():
+    """Страница с политикой конфиденциальности"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Политика конфиденциальности - Target AI</title>
+        <meta charset="utf-8">
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #333; }
+            h2 { color: #666; }
+        </style>
+    </head>
+    <body>
+        <h1>Политика конфиденциальности Target AI</h1>
+        
+        <p><strong>Последнее обновление:</strong> 20 июля 2025 г.</p>
+        
+        <h2>1. Сбор информации</h2>
+        <p>Мы собираем следующую информацию при использовании нашего сервиса:</p>
+        <ul>
+            <li>Данные вашего рекламного аккаунта Facebook</li>
+            <li>Информацию о рекламных кампаниях</li>
+            <li>Статистику и метрики рекламных объявлений</li>
+        </ul>
+
+        <h2>2. Использование информации</h2>
+        <p>Собранная информация используется для:</p>
+        <ul>
+            <li>Оптимизации ваших рекламных кампаний</li>
+            <li>Предоставления аналитики и отчетов</li>
+            <li>Улучшения качества нашего сервиса</li>
+        </ul>
+
+        <h2>3. Защита информации</h2>
+        <p>Мы применяем современные методы защиты для обеспечения безопасности ваших данных. Вся информация передается по защищенным каналам связи.</p>
+
+        <h2>4. Доступ к данным</h2>
+        <p>Доступ к данным имеют только авторизованные сотрудники. Мы не передаем ваши данные третьим лицам без вашего согласия.</p>
+
+        <h2>5. Контакты</h2>
+        <p>По всем вопросам, связанным с обработкой данных, обращайтесь по адресу: support@target-ai.com</p>
+    </body>
+    </html>
+    """
 
 if __name__ == "__main__":
     import uvicorn
