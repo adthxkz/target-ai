@@ -29,10 +29,12 @@ app = FastAPI(
 )
 
 # Добавляем CORS middleware
-# В продакшене нужно указать конкретные домены вместо "*"
-allowed_origins = [BASE_URL]
-if not IS_PRODUCTION:
-    allowed_origins.append("http://localhost:3000")  # для локальной разработки
+# Настройка разрешенных доменов для CORS
+allowed_origins = [
+    BASE_URL,
+    "http://localhost:3000",  # для локальной разработки
+    "https://target-ai-prlm.onrender.com",  # для продакшена
+]
 
 app.add_middleware(
     CORSMiddleware,
