@@ -23,3 +23,14 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             yield session
         finally:
             await session.close()
+
+async def init_db():
+    """Инициализация базы данных"""
+    async with engine.begin() as conn:
+        from .models import Base
+        await conn.run_sync(Base.metadata.create_all)
+    async with async_session() as session:
+        try:
+            yield session
+        finally:
+            await session.close()

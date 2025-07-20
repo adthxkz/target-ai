@@ -29,6 +29,33 @@ class Campaign(Base):
     status = Column(String)
     objective = Column(String)
     daily_budget = Column(Float)
+    lifetime_budget = Column(Float)
+    stats = Column(JSON)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    user = relationship("User", back_populates="campaigns")
+
+class Budget(Base):
+    __tablename__ = 'budgets'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    campaign_id = Column(String)  # fb_campaign_id
+    budget_type = Column(String)  # daily/lifetime
+    amount = Column(Float)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    user = relationship("User", back_populates="budgets")
+
+class Campaign(Base):
+    __tablename__ = 'campaigns'
+
+    id = Column(Integer, primary_key=True)
+    fb_campaign_id = Column(String, unique=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    name = Column(String)
+    status = Column(String)
+    objective = Column(String)
+    daily_budget = Column(Float)
     total_spent = Column(Float, default=0.0)
     created_at = Column(DateTime(timezone=True), default=utc_now)
     last_updated = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

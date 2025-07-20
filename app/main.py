@@ -6,10 +6,11 @@ import os
 import logging
 import asyncio
 from dotenv import load_dotenv
-from telegram_integration import start_bot
+from .telegram_integration import start_bot
 from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
 import json
+from .db.database import init_db
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -69,8 +70,20 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    """Запуск телеграм-бота при старте приложения"""
-    await start_bot()
+    """Инициализация приложения"""
+    # Инициализация базы данных
+    try:
+        await init_db()
+        logger.info("База данных инициализирована")
+    except Exception as e:
+        logger.error(f"Ошибка инициализации базы данных: {e}")
+    
+    # Запуск телеграм-бота
+    try:
+        await start_bot()
+        logger.info("Телеграм бот запущен")
+    except Exception as e:
+        logger.error(f"Ошибка запуска телеграм бота: {e}")
 
 # Добавляем CORS middleware
 # Настройка разрешенных доменов для CORS

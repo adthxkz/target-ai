@@ -1,6 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
+import os
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /start"""
@@ -168,4 +169,53 @@ async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         "Главное меню:\nВыберите действие:",
         reply_markup=reply_markup
+    )
+
+async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка кнопки Настройки"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("🔔 Уведомления", callback_data="settings_notifications"),
+            InlineKeyboardButton("⚙️ Общие", callback_data="settings_general")
+        ],
+        [
+            InlineKeyboardButton("« Назад", callback_data="back_to_main")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "⚙️ *Настройки*\n\n"
+        "Выберите раздел настроек:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def connect_fb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка кнопки Подключить Facebook"""
+    query = update.callback_query
+    await query.answer()
+    
+    backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+    auth_url = f"{backend_url}/auth/facebook"
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("🔗 Подключить аккаунт", url=auth_url)
+        ],
+        [
+            InlineKeyboardButton("« Назад", callback_data="back_to_main")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "🔄 *Подключение Facebook*\n\n"
+        "Для подключения вашего рекламного аккаунта Facebook нажмите кнопку ниже.\n"
+        "Вы будете перенаправлены на страницу авторизации Facebook.",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
     )

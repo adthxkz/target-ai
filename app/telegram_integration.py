@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 from .bot.bot import create_bot
 
 # Загрузка переменных окружения
-if os.path.exists(".env"):
-    load_dotenv()
+if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 class TelegramBot:
     def __init__(self):

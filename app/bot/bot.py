@@ -7,14 +7,16 @@ from .handlers import (
     show_active_campaigns,
     budget_handler,
     stats_handler,
+    settings_handler,
+    connect_fb_handler,
     back_to_main
 )
 
 # Загрузка переменных окружения
-if os.path.exists(".env"):
-    load_dotenv()
+if os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", ".env")):
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 def create_bot():
     """Создание и настройка бота"""
@@ -30,6 +32,8 @@ def create_bot():
     app.add_handler(CallbackQueryHandler(show_active_campaigns, pattern="^campaigns_active$"))
     app.add_handler(CallbackQueryHandler(budget_handler, pattern="^budget$"))
     app.add_handler(CallbackQueryHandler(stats_handler, pattern="^stats$"))
+    app.add_handler(CallbackQueryHandler(settings_handler, pattern="^settings$"))
+    app.add_handler(CallbackQueryHandler(connect_fb_handler, pattern="^connect_fb$"))
     app.add_handler(CallbackQueryHandler(back_to_main, pattern="^back_to_main$"))
     
     return app
