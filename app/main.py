@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
@@ -11,6 +11,9 @@ from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
 import json
 from .db.database import init_db
+from .services.media_analysis import MediaAnalysisService
+from .services.campaign_automation import CampaignAutomationService
+from typing import Optional
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -67,6 +70,10 @@ app = FastAPI(
     description="API для управления рекламными кампаниями в Facebook",
     version="1.0.0"
 )
+
+# Инициализация сервисов
+media_analysis_service = MediaAnalysisService()
+campaign_automation_service = CampaignAutomationService()
 
 @app.on_event("startup")
 async def startup_event():
@@ -208,6 +215,163 @@ async def get_ad_account():
     if not IS_MOCK_MODE:
         raise HTTPException(status_code=501, detail="Only available in mock mode")
     return JSONResponse({"account": MOCK_AD_ACCOUNT})
+
+@app.post("/api/analyze-media")
+async def analyze_media(
+    file: UploadFile = File(...),
+    user_preferences: Optional[str] = Form(None)
+):
+    """
+    Анализирует загруженный медиа-файл (изображение или видео) 
+    и предлагает параметры для рекламной кампании
+    """
+    try:
+        # Проверяем тип файла
+        allowed_types = {
+            'image': ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+            'video': ['video/mp4', 'video/avi', 'video/mov', 'video/quicktime']
+        }
+        
+        file_type = None
+        for media_type, mime_types in allowed_types.items():
+            if file.content_type in mime_types:
+                file_type = media_type
+                break
+        
+        if not file_type:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Неподдерживаемый тип файла: {file.content_type}"
+            )
+        
+        # Проверяем размер файла (макс 10MB)
+        file_content = await file.read()
+        if len(file_content) > 10 * 1024 * 1024:  # 10MB
+            raise HTTPException(status_code=400, detail="Файл слишком большой (макс 10MB)")
+        
+        # Анализируем медиа
+        if file_type == 'image':
+            analysis_result = await media_analysis_service.analyze_image(
+                file_content, file.filename
+            )
+        else:  # video
+            analysis_result = await media_analysis_service.analyze_video(
+                file_content, file.filename
+            )
+        
+        # Добавляем информацию о файле
+        analysis_result["file_info"] = {
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "size_bytes": len(file_content),
+            "media_type": file_type
+        }
+        
+        return JSONResponse(analysis_result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка анализа медиа: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка анализа файла: {str(e)}")
+
+@app.post("/api/create-campaign")
+async def create_campaign_from_analysis(request: Request):
+    """
+    Создает рекламную кампанию на основе результатов анализа медиа
+    """
+    try:
+        data = await request.json()
+        
+        # Проверяем обязательные поля
+        if "analysis_data" not in data:
+            raise HTTPException(status_code=400, detail="Отсутствуют данные анализа")
+        
+        analysis_data = data["analysis_data"]
+        user_preferences = data.get("user_preferences", {})
+        
+        # Создаем кампанию
+        campaign_result = await campaign_automation_service.create_campaign_from_analysis(
+            analysis_data, user_preferences
+        )
+        
+        return JSONResponse(campaign_result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка создания кампании: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка создания кампании: {str(e)}")
+
+@app.get("/api/campaign/{campaign_id}/performance")
+async def get_campaign_performance(campaign_id: str):
+    """
+    Получает метрики производительности кампании
+    """
+    try:
+        performance = await campaign_automation_service.get_campaign_performance(campaign_id)
+        return JSONResponse(performance)
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения метрик кампании {campaign_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка получения метрик: {str(e)}")
+
+@app.post("/api/campaign/{campaign_id}/optimize")
+async def optimize_campaign(campaign_id: str):
+    """
+    Запускает оптимизацию кампании на основе текущих метрик
+    """
+    try:
+        optimization_result = await campaign_automation_service.optimize_campaign(campaign_id)
+        return JSONResponse(optimization_result)
+        
+    except Exception as e:
+        logger.error(f"Ошибка оптимизации кампании {campaign_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка оптимизации: {str(e)}")
+
+@app.get("/api/workflow/demo")
+async def demo_full_workflow():
+    """
+    Демонстрирует полный рабочий процесс: анализ -> создание -> оптимизация
+    """
+    try:
+        # 1. Имитируем анализ изображения
+        mock_analysis = await media_analysis_service.analyze_image(b"mock_image_data", "demo.jpg")
+        
+        # 2. Создаем кампанию на основе анализа
+        campaign_result = await campaign_automation_service.create_campaign_from_analysis(
+            mock_analysis, {"budget": 100, "campaign_name": "Demo Campaign"}
+        )
+        
+        if campaign_result["status"] == "success":
+            campaign_id = campaign_result["campaign"]["campaign_id"]
+            
+            # 3. Получаем метрики
+            performance = await campaign_automation_service.get_campaign_performance(campaign_id)
+            
+            # 4. Запускаем оптимизацию
+            optimization = await campaign_automation_service.optimize_campaign(campaign_id)
+            
+            return JSONResponse({
+                "status": "success",
+                "workflow": {
+                    "step_1_analysis": mock_analysis,
+                    "step_2_campaign_creation": campaign_result,
+                    "step_3_performance": performance,
+                    "step_4_optimization": optimization
+                },
+                "message": "Демонстрация полного рабочего процесса завершена"
+            })
+        else:
+            return JSONResponse({
+                "status": "error",
+                "message": "Ошибка создания кампании",
+                "details": campaign_result
+            })
+        
+    except Exception as e:
+        logger.error(f"Ошибка демонстрации workflow: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка демонстрации: {str(e)}")
 
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy():
