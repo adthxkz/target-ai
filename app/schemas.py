@@ -1,19 +1,25 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict
 from datetime import datetime
 
 class CampaignCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     name: str
     objective: str
     daily_budget: float
     status: str = 'PAUSED'
 
 class CampaignUpdate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     name: Optional[str] = None
     status: Optional[str] = None
     daily_budget: Optional[float] = None
 
 class AdCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     campaign_id: str
     creative_id: str
     creative_type: str
@@ -27,6 +33,8 @@ class AdCreate(BaseModel):
     bid_amount: Optional[int] = None
 
 class TargetingCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     countries: Optional[List[str]] = None
     regions: Optional[List[str]] = None
     cities: Optional[List[str]] = None
@@ -38,18 +46,21 @@ class TargetingCreate(BaseModel):
     languages: Optional[List[str]] = None
 
 class CreativeUpload(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     image_path: Optional[str] = None
     video_path: Optional[str] = None
     name: Optional[str] = None
 
 class ErrorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     error: str
     detail: Optional[str] = None
-    objective: str
-    daily_budget: float
-    status: str = "PAUSED"
 
-class CreativeUpload(BaseModel):
+class CreativeUploadV2(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     campaign_id: str
     file_type: str  # "image" или "video"
     title: str
@@ -58,6 +69,8 @@ class CreativeUpload(BaseModel):
     url: Optional[str] = None
 
 class BudgetSettings(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     total_budget: float
     daily_budget: float
     start_date: datetime
@@ -65,6 +78,8 @@ class BudgetSettings(BaseModel):
     campaign_distribution: Optional[Dict[str, float]] = None
 
 class CampaignStats(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     campaign_id: str
     name: str
     status: str
@@ -77,6 +92,8 @@ class CampaignStats(BaseModel):
     end_date: datetime
 
 class CampaignOptimization(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     campaign_id: str
     recommendations: List[str]
     budget_adjustment: float
@@ -84,6 +101,8 @@ class CampaignOptimization(BaseModel):
     performance_metrics: Dict[str, float]
 
 class DashboardMetrics(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     total_spend: float
     total_revenue: float
     overall_roas: float

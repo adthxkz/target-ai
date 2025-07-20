@@ -1,5 +1,4 @@
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from typing import AsyncGenerator
 import os
 from dotenv import load_dotenv
@@ -14,7 +13,7 @@ else:
 
 engine = create_async_engine(ASYNC_DATABASE_URL, echo=True)
 
-async_session_factory = sessionmaker(
+async_session_factory = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False
@@ -32,8 +31,3 @@ async def init_db():
     from .models import Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    async with async_session() as session:
-        try:
-            yield session
-        finally:
-            await session.close()

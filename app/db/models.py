@@ -1,9 +1,10 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, ForeignKey
-from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, ForeignKey, func
+from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime, timezone
+from typing import Optional
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -11,90 +12,61 @@ def utc_now():
 class User(Base):
     __tablename__ = 'users'
 
-    id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True)
-    fb_access_token = Column(String)
-    fb_account_id = Column(String)
-    created_at = Column(DateTime(timezone=True), default=utc_now)
-    campaigns = relationship("Campaign", back_populates="user")
-    budgets = relationship("Budget", back_populates="user")
-
-class Campaign(Base):
-    __tablename__ = 'campaigns'
-
-    id = Column(Integer, primary_key=True)
-    fb_campaign_id = Column(String, unique=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    name = Column(String)
-    status = Column(String)
-    objective = Column(String)
-    daily_budget = Column(Float)
-    lifetime_budget = Column(Float)
-    stats = Column(JSON)
-    created_at = Column(DateTime(timezone=True), default=utc_now)
-    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
-    user = relationship("User", back_populates="campaigns")
-
-class Budget(Base):
-    __tablename__ = 'budgets'
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    campaign_id = Column(String)  # fb_campaign_id
-    budget_type = Column(String)  # daily/lifetime
-    amount = Column(Float)
-    created_at = Column(DateTime(timezone=True), default=utc_now)
-    user = relationship("User", back_populates="budgets")
-
-class Campaign(Base):
-    __tablename__ = 'campaigns'
-
-    id = Column(Integer, primary_key=True)
-    fb_campaign_id = Column(String, unique=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    name = Column(String)
-    status = Column(String)
-    objective = Column(String)
-    daily_budget = Column(Float)
-    total_spent = Column(Float, default=0.0)
-    created_at = Column(DateTime(timezone=True), default=utc_now)
-    last_updated = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
-    metrics = Column(JSON)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True)
+    fb_access_token: Mapped[Optional[str]] = mapped_column(String)
+    fb_account_id: Mapped[Optional[str]] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     
-    user = relationship("User", back_populates="campaigns")
-    creatives = relationship("Creative", back_populates="campaign")
+    campaigns: Mapped[list["Campaign"]] = relationship("Campaign", back_populates="user")
+    budgets: Mapped[list["Budget"]] = relationship("Budget", back_populates="user")
+
+class Campaign(Base):
+    __tablename__ = 'campaigns'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fb_campaign_id: Mapped[Optional[str]] = mapped_column(String, unique=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('users.id'))
+    name: Mapped[Optional[str]] = mapped_column(String)
+    status: Mapped[Optional[str]] = mapped_column(String)
+    objective: Mapped[Optional[str]] = mapped_column(String)
+    daily_budget: Mapped[Optional[float]] = mapped_column(Float)
+    lifetime_budget: Mapped[Optional[float]] = mapped_column(Float)
+    total_spent: Mapped[float] = mapped_column(Float, default=0.0)
+    stats: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="campaigns")
+    creatives: Mapped[list["Creative"]] = relationship("Creative", back_populates="campaign")
 
 class Creative(Base):
     __tablename__ = 'creatives'
 
-    id = Column(Integer, primary_key=True)
-    campaign_id = Column(Integer, ForeignKey('campaigns.id'))
-    fb_creative_id = Column(String)
-    type = Column(String)  # image/video
-    file_path = Column(String)
-    analysis = Column(JSON)  # результаты анализа от GPT-4
-    performance = Column(JSON)  # метрики производительности
-    created_at = Column(DateTime(timezone=True), default=utc_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('campaigns.id'))
+    fb_creative_id: Mapped[Optional[str]] = mapped_column(String)
+    type: Mapped[Optional[str]] = mapped_column(String)  # image/video
+    file_path: Mapped[Optional[str]] = mapped_column(String)
+    analysis: Mapped[Optional[dict]] = mapped_column(JSON)  # результаты анализа от GPT-4
+    performance: Mapped[Optional[dict]] = mapped_column(JSON)  # метрики производительности
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     
-    campaign = relationship("Campaign", back_populates="creatives")
+    campaign: Mapped[Optional["Campaign"]] = relationship("Campaign", back_populates="creatives")
 
 class Budget(Base):
     __tablename__ = 'budgets'
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    total_budget = Column(Float)
-    daily_budget = Column(Float)
-    start_date = Column(DateTime)
-    end_date = Column(DateTime)
-    spend_strategy = Column(JSON)  # настройки распределения бюджета
-    created_at = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('users.id'))
+    campaign_id: Mapped[Optional[str]] = mapped_column(String)  # fb_campaign_id
+    budget_type: Mapped[Optional[str]] = mapped_column(String)  # daily/lifetime
+    total_budget: Mapped[Optional[float]] = mapped_column(Float)
+    daily_budget: Mapped[Optional[float]] = mapped_column(Float)
+    amount: Mapped[Optional[float]] = mapped_column(Float)
+    start_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    end_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    spend_strategy: Mapped[Optional[dict]] = mapped_column(JSON)  # настройки распределения бюджета
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     
-    user = relationship("User", back_populates="budgets")
-
-def init_db(db_url: str):
-    """Инициализирует базу данных."""
-    engine = create_engine(db_url)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    return Session()
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="budgets")
