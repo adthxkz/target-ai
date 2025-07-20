@@ -4,7 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import os
 import logging
+import asyncio
 from dotenv import load_dotenv
+from telegram_integration import start_bot
 from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
 import json
@@ -64,6 +66,11 @@ app = FastAPI(
     description="API для управления рекламными кампаниями в Facebook",
     version="1.0.0"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Запуск телеграм-бота при старте приложения"""
+    await start_bot()
 
 # Добавляем CORS middleware
 # Настройка разрешенных доменов для CORS
