@@ -3,10 +3,15 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import os
+import logging
 from dotenv import load_dotenv
 from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
 import json
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения (только для локальной разработки)
 if os.path.exists(".env"):
@@ -50,16 +55,26 @@ user_states = {}
 @app.get("/auth/facebook")
 async def facebook_auth():
     """Начало процесса авторизации Facebook"""
+    logger.info(f"Starting Facebook auth process. REDIRECT_URI: {FB_REDIRECT_URI}")
+    if not FB_APP_ID or not FB_APP_SECRET:
+        logger.error("Missing Facebook credentials")
+        raise HTTPException(status_code=500, detail="Facebook credentials not configured")
+    
     auth_url = f"https://www.facebook.com/v17.0/dialog/oauth?client_id={FB_APP_ID}&redirect_uri={FB_REDIRECT_URI}&scope={FB_SCOPE}"
+    logger.info(f"Redirecting to Facebook auth URL: {auth_url}")
     return RedirectResponse(url=auth_url)
 
 @app.get("/auth/facebook/callback")
 async def facebook_callback(code: str = None, error: str = None):
     """Обработка callback от Facebook"""
+    logger.info("Received Facebook callback")
+    
     if error:
+        logger.error(f"Facebook OAuth error: {error}")
         raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
     
     if not code:
+        logger.error("No code provided in callback")
         raise HTTPException(status_code=400, detail="No code provided")
     
     # Получаем access token
