@@ -18,7 +18,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-API_BASE_URL = "http://localhost:5000"  # Flask API
+
+# Определяем API URL в зависимости от окружения
+IS_PRODUCTION = os.getenv("RENDER", "false").lower() == "true"
+if IS_PRODUCTION:
+    API_BASE_URL = "https://target-ai-prlm.onrender.com"
+else:
+    API_BASE_URL = "http://localhost:5000"  # Flask API для локальной разработки
+
+logger.info(f"Telegram бот будет использовать API: {API_BASE_URL}")
 
 # Хранилище состояний пользователей
 user_states = {}
