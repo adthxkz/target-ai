@@ -10,7 +10,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 try:
-    from telegram_bot_v2 import (
+    from telegram_bot import (
         start, 
         button_callback, 
         handle_media,
@@ -18,7 +18,7 @@ try:
     )
     HANDLERS_AVAILABLE = True
     logger = logging.getLogger(__name__)
-    logger.info("Telegram bot v2 handlers imported successfully")
+    logger.info("Telegram bot handlers imported successfully")
 except ImportError as e:
     logger = logging.getLogger(__name__)
     logger.error(f"Failed to import v2 handlers: {e}")
