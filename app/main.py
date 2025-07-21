@@ -126,6 +126,29 @@ app.add_middleware(
 # Словарь для хранения временных данных пользователей
 user_states = {}
 
+@app.get("/")
+async def root():
+    """Корневой эндпоинт API"""
+    return {
+        "message": "Добро пожаловать в Target AI API",
+        "version": "1.0.0",
+        "status": "active",
+        "features": [
+            "Facebook Ads автоматизация",
+            "AI анализ медиа контента",
+            "Telegram бот интеграция",
+            "Создание и оптимизация кампаний"
+        ],
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/health",
+            "auth": "/auth/facebook",
+            "campaigns": "/api/campaigns",
+            "analyze": "/api/analyze-media",
+            "workflow": "/api/workflow/demo"
+        }
+    }
+
 @app.get("/auth/facebook")
 async def facebook_auth():
     """Начало процесса авторизации Facebook"""
