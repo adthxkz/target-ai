@@ -1,34 +1,16 @@
 from fastapi import FastAPI, HTTPException
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler
 import asyncio
 import os
 import logging
 from dotenv import load_dotenv
-
-# Импортируем обработчики из современной версии бота
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
-try:
-    from telegram_bot import (
-        start, 
-        button_callback, 
-        handle_media,
-        BOT_TOKEN
-    )
-    HANDLERS_AVAILABLE = True
-    logger = logging.getLogger(__name__)
-    logger.info("Telegram bot handlers imported successfully")
-except ImportError as e:
-    logger = logging.getLogger(__name__)
-    logger.error(f"Failed to import v2 handlers: {e}")
-    HANDLERS_AVAILABLE = False
 
 # Загрузка переменных окружения
 if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+logger = logging.getLogger(__name__)
 
 class TelegramBot:
     def __init__(self):
@@ -37,82 +19,63 @@ class TelegramBot:
     async def start(self):
         """Запуск бота"""
         if not TELEGRAM_TOKEN:
-            raise ValueError("TELEGRAM_BOT_TOKEN not found in environment variables")
+            logger.error("TELEGRAM_BOT_TOKEN not found in environment variables")
+            return
             
-        if not self.app:
-            if HANDLERS_AVAILABLE:
-                # Используем современную версию с поддержкой медиа
+        try:
+            if not self.app:
+                # Создаем простой бот без сложных зависимостей
                 self.app = Application.builder().token(TELEGRAM_TOKEN).build()
                 
-                # Добавляем обработчики
-                self.app.add_handler(CommandHandler("start", start))
-                self.app.add_handler(CallbackQueryHandler(button_callback))
-                self.app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
-                
-                logger.info("Telegram бот v2 с поддержкой медиа инициализирован")
-            else:
-                # Простой fallback бот без старых зависимостей
+                # Добавляем простой обработчик start
                 async def simple_start(update, context):
                     await update.message.reply_text(
-                        "🤖 Target AI Bot\n\n"
-                        "Бот временно работает в упрощенном режиме.\n"
-                        "Основные функции доступны через API:\n"
-                        "https://target-ai-prlm.onrender.com"
+                        "🎯 *Target AI Bot*\n\n"
+                        "Добро пожаловать в Target AI!\n\n"
+                        "🚀 Основные функции:\n"
+                        "• AI анализ медиа контента\n"
+                        "• Автоматизация Facebook Ads\n"
+                        "• Оптимизация кампаний\n\n"
+                        "💻 Используйте веб-интерфейс для полного функционала:\n"
+                        "🌐 https://target-ai-prlm.onrender.com\n"
+                        "📊 https://target-ai-prlm.onrender.com/docs",
+                        parse_mode='Markdown'
                     )
                 
-                self.app = Application.builder().token(TELEGRAM_TOKEN).build()
                 self.app.add_handler(CommandHandler("start", simple_start))
-                logger.info("Telegram бот (простой fallback) инициализирован")
+                logger.info("Telegram бот (упрощенная версия) инициализирован")
             
-            # Инициализируем и запускаем
+            # Инициализируем приложение
             await self.app.initialize()
-            await self.app.start()
+            logger.info("Telegram бот успешно инициализирован")
             
-            # В production используем webhook, локально polling
+            # В production настраиваем webhook
             if os.getenv("RENDER", "false").lower() == "true":
-                # Production: настраиваем webhook
                 webhook_url = f"https://target-ai-prlm.onrender.com/webhook/telegram"
                 await self.app.bot.set_webhook(webhook_url)
                 logger.info(f"Telegram webhook установлен: {webhook_url}")
             else:
-                # Локальная разработка: используем polling в отдельной задаче
-                asyncio.create_task(self._run_polling())
-                logger.info("Telegram polling запущен в фоновом режиме")
+                logger.info("Локальная разработка: webhook не устанавливается")
                 
-            logger.info("Telegram бот инициализирован и готов к работе")
-    
-    async def _run_polling(self):
-        """Запуск polling в фоновом режиме для локальной разработки"""
-        try:
-            await self.app.updater.start_polling()
-            await self.app.updater.idle()
         except Exception as e:
-            logger.error(f"Ошибка polling: {e}")
+            logger.error(f"Ошибка инициализации Telegram бота: {e}")
+            # Не падаем, продолжаем работу API без бота
             
     async def stop(self):
         """Остановка бота"""
         if self.app:
-            # Удаляем webhook если был установлен
             try:
                 await self.app.bot.delete_webhook()
-            except:
-                pass
-                
-            await self.app.stop()
-            await self.app.shutdown()
-            self.app = None
-            logger.info("Telegram бот остановлен")
-            
-    async def stop(self):
-        """Остановка бота"""
-        if self.app:
-            await self.app.stop()
-            await self.app.shutdown()
-            self.app = None
-            logger.info("Telegram бот остановлен")
+                await self.app.stop()
+                await self.app.shutdown()
+                self.app = None
+                logger.info("Telegram бот остановлен")
+            except Exception as e:
+                logger.error(f"Ошибка остановки бота: {e}")
 
+# Глобальный экземпляр бота
 bot_instance = TelegramBot()
 
 async def start_bot():
-    """Запуск бота в фоновом режиме"""
+    """Функция для запуска бота из main.py"""
     await bot_instance.start()
