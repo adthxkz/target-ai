@@ -2,7 +2,7 @@
 Сервис для анализа медиа-контента с помощью OpenAI
 """
 import os
-import openai
+from openai import OpenAI
 from typing import Dict, Any, List
 import logging
 from io import BytesIO
@@ -14,22 +14,28 @@ logger = logging.getLogger(__name__)
 class MediaAnalysisService:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.client = None
         if self.openai_api_key:
-            openai.api_key = self.openai_api_key
+            try:
+                self.client = OpenAI(api_key=self.openai_api_key)
+                logger.info("OpenAI клиент инициализирован")
+            except Exception as e:
+                logger.error(f"Ошибка инициализации OpenAI: {e}")
+                self.client = None
         
     async def analyze_image(self, image_data: bytes, filename: str) -> Dict[str, Any]:
         """
         Анализирует изображение и предлагает параметры для рекламной кампании
         """
         try:
-            if not self.openai_api_key:
+            if not self.client:
                 return self._mock_image_analysis(filename)
             
             # Конвертируем изображение в base64
             image_base64 = base64.b64encode(image_data).decode('utf-8')
             
-            response = openai.ChatCompletion.create(
-                model="gpt-4-vision-preview",
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
@@ -65,8 +71,18 @@ class MediaAnalysisService:
             # Парсим JSON ответ
             import json
             try:
-                analysis_json = json.loads(analysis_text)
-            except json.JSONDecodeError:
+                # Убираем markdown форматирование если есть
+                json_text = analysis_text.strip()
+                if json_text.startswith('```json'):
+                    json_text = json_text[7:]  # убираем ```json
+                if json_text.endswith('```'):
+                    json_text = json_text[:-3]  # убираем ```
+                json_text = json_text.strip()
+                
+                analysis_json = json.loads(json_text)
+                logger.info("JSON успешно распарсен из ответа OpenAI")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Не удалось распарсить JSON: {e}")
                 # Если ответ не в JSON формате, создаем структурированный ответ
                 analysis_json = self._parse_text_analysis(analysis_text)
             
@@ -85,7 +101,7 @@ class MediaAnalysisService:
         Анализирует видео (пока используем mock данные)
         """
         try:
-            if not self.openai_api_key:
+            if not self.client:
                 return self._mock_video_analysis(filename)
             
             # Для видео пока используем mock анализ
