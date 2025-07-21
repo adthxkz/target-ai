@@ -1,6 +1,4 @@
 from fastapi import FastAPI, HTTPException
-from telegram.ext import Application, CommandHandler
-import asyncio
 import os
 import logging
 from dotenv import load_dotenv
@@ -23,8 +21,11 @@ class TelegramBot:
             return
             
         try:
+            # Пытаемся импортировать и инициализировать telegram bot
+            from telegram.ext import Application, CommandHandler
+            
             if not self.app:
-                # Создаем простой бот без сложных зависимостей
+                # Создаем простое приложение
                 self.app = Application.builder().token(TELEGRAM_TOKEN).build()
                 
                 # Добавляем простой обработчик start
@@ -43,7 +44,7 @@ class TelegramBot:
                     )
                 
                 self.app.add_handler(CommandHandler("start", simple_start))
-                logger.info("Telegram бот (упрощенная версия) инициализирован")
+                logger.info("Telegram бот (упрощенная версия) создан")
             
             # Инициализируем приложение
             await self.app.initialize()
