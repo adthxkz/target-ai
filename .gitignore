@@ -40,3 +40,6 @@ ENV/
 # Local development
 *.db
 *.sqlite3
+data/
+data/*.db
+data/*.sqlite3

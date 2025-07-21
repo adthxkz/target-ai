@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import os
 import logging
 import asyncio
+import httpx
 from dotenv import load_dotenv
 from .telegram_integration import start_bot, stop_bot, process_telegram_update
 from facebook_business.api import FacebookAdsApi
@@ -199,10 +200,11 @@ async def facebook_callback(code: str = None, error: str = None):
         "code": code
     }
     
-    import requests
-    response = requests.get(token_url, params=params)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(token_url, params=params)
     
     if response.status_code != 200:
+        logger.error(f"Failed to get access token: {response.text}")
         raise HTTPException(status_code=400, detail="Failed to get access token")
     
     token_data = response.json()
@@ -213,12 +215,17 @@ async def facebook_callback(code: str = None, error: str = None):
     
     # Получаем список рекламных аккаунтов
     try:
-        me = requests.get(f"https://graph.facebook.com/v17.0/me/adaccounts", 
-                         params={"access_token": access_token})
-        accounts = me.json().get("data", [])
+        async with httpx.AsyncClient() as client:
+            me_response = await client.get(f"https://graph.facebook.com/v17.0/me/adaccounts", 
+                                          params={"access_token": access_token, "fields": "id,name,currency,timezone_name"})
+        
+        me_response.raise_for_status()
+        accounts = me_response.json().get("data", [])
         
         # Анализируем рекламные кампании для первого аккаунта
         if accounts:
+            # Этот вызов остается синхронным, так как facebook_business SDK не является полностью асинхронным
+            # Для полной асинхронности потребовалась бы замена SDK или прямые вызовы API через httpx
             account = AdAccount(accounts[0]["id"])
             campaigns = account.get_campaigns(fields=["name", "status", "objective"])
             return JSONResponse({
@@ -227,7 +234,11 @@ async def facebook_callback(code: str = None, error: str = None):
                 "accounts": accounts,
                 "campaigns": [campaign.export_all_data() for campaign in campaigns]
             })
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error while getting ad accounts: {e.response.text}")
+        raise HTTPException(status_code=e.response.status_code, detail="Failed to get ad accounts from Facebook")
     except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
     return JSONResponse({"status": "error", "message": "No ad accounts found"})
