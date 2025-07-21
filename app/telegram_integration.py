@@ -1,82 +1,106 @@
-from fastapi import FastAPI, HTTPException
+import asyncio
 import os
 import logging
 from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Загрузка переменных окружения
-if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
-    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+# Загрузка переменных окружения из .env файла для локальной разработки
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+# Конфигурация
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
+IS_PRODUCTION = os.getenv("RENDER", "false").lower() == "true"
+
 logger = logging.getLogger(__name__)
 
-class TelegramBot:
-    def __init__(self):
-        self.app = None
-        
-    async def start(self):
-        """Запуск бота"""
-        if not TELEGRAM_TOKEN:
-            logger.error("TELEGRAM_BOT_TOKEN not found in environment variables")
-            return
-            
-        try:
-            # Пытаемся импортировать и инициализировать telegram bot
-            from telegram.ext import Application, CommandHandler
-            
-            if not self.app:
-                # Создаем простое приложение
-                self.app = Application.builder().token(TELEGRAM_TOKEN).build()
-                
-                # Добавляем простой обработчик start
-                async def simple_start(update, context):
-                    await update.message.reply_text(
-                        "🎯 *Target AI Bot*\n\n"
-                        "Добро пожаловать в Target AI!\n\n"
-                        "🚀 Основные функции:\n"
-                        "• AI анализ медиа контента\n"
-                        "• Автоматизация Facebook Ads\n"
-                        "• Оптимизация кампаний\n\n"
-                        "💻 Используйте веб-интерфейс для полного функционала:\n"
-                        "🌐 https://target-ai-prlm.onrender.com\n"
-                        "📊 https://target-ai-prlm.onrender.com/docs",
-                        parse_mode='Markdown'
-                    )
-                
-                self.app.add_handler(CommandHandler("start", simple_start))
-                logger.info("Telegram бот (упрощенная версия) создан")
-            
-            # Инициализируем приложение
-            await self.app.initialize()
-            logger.info("Telegram бот успешно инициализирован")
-            
-            # В production настраиваем webhook
-            if os.getenv("RENDER", "false").lower() == "true":
-                webhook_url = f"https://target-ai-prlm.onrender.com/webhook/telegram"
-                await self.app.bot.set_webhook(webhook_url)
-                logger.info(f"Telegram webhook установлен: {webhook_url}")
-            else:
-                logger.info("Локальная разработка: webhook не устанавливается")
-                
-        except Exception as e:
-            logger.error(f"Ошибка инициализации Telegram бота: {e}")
-            # Не падаем, продолжаем работу API без бота
-            
-    async def stop(self):
-        """Остановка бота"""
-        if self.app:
-            try:
-                await self.app.bot.delete_webhook()
-                await self.app.stop()
-                await self.app.shutdown()
-                self.app = None
-                logger.info("Telegram бот остановлен")
-            except Exception as e:
-                logger.error(f"Ошибка остановки бота: {e}")
+# Глобальная переменная для хранения экземпляра приложения
+application: Application | None = None
 
-# Глобальный экземпляр бота
-bot_instance = TelegramBot()
+async def start_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет приветственное сообщение в ответ на команду /start."""
+    welcome_message = (
+        "🎯 *Target AI Bot*\n\n"
+        "Добро пожаловать! Я помогу вам проанализировать рекламные креативы.\n\n"
+        "Просто отправьте мне изображение или видео, чтобы начать. "
+        "Для получения дополнительных возможностей используйте веб-интерфейс."
+    )
+    await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
 async def start_bot():
-    """Функция для запуска бота из main.py"""
-    await bot_instance.start()
+    """
+    Инициализирует бота, настраивает обработчики и конфигурирует вебхук или поллинг.
+    Эта функция вызывается при запуске приложения FastAPI.
+    """
+    global application
+    if not TELEGRAM_TOKEN:
+        logger.error("TELEGRAM_BOT_TOKEN не установлен. Telegram бот не будет запущен.")
+        return
+
+    try:
+        builder = Application.builder().token(TELEGRAM_TOKEN)
+        application = builder.build()
+
+        # Добавление обработчиков команд
+        application.add_handler(CommandHandler("start", start_command_handler))
+
+        # Инициализация приложения
+        await application.initialize()
+
+        if IS_PRODUCTION:
+            # Установка вебхука в продакшене
+            webhook_url = f"{BASE_URL}/webhook/telegram"
+            await application.bot.set_webhook(
+                url=webhook_url,
+                allowed_updates=Update.ALL_TYPES
+            )
+            logger.info(f"Вебхук Telegram установлен на {webhook_url}")
+        else:
+            # Запуск поллинга в разработке
+            if application.updater:
+                await application.updater.start_polling()
+                logger.info("Telegram бот запущен с поллингом для локальной разработки.")
+
+        logger.info("Telegram бот успешно запущен.")
+
+    except Exception as e:
+        logger.error("Не удалось запустить Telegram бота", exc_info=True)
+        application = None  # Гарантируем, что приложение не будет использоваться в случае сбоя
+
+async def stop_bot():
+    """
+    Корректно останавливает бота.
+    Эта функция вызывается при завершении работы приложения FastAPI.
+    """
+    if application:
+        try:
+            if IS_PRODUCTION:
+                await application.bot.delete_webhook()
+                logger.info("Вебхук Telegram удален.")
+            else:
+                if application.updater and application.updater.is_running:
+                    await application.updater.stop()
+                    logger.info("Поллинг Telegram остановлен.")
+            
+            await application.shutdown()
+            logger.info("Приложение Telegram успешно завершило работу.")
+        except Exception:
+            logger.error("Произошла ошибка при остановке бота.", exc_info=True)
+
+async def process_telegram_update(data: dict):
+    """
+    Обрабатывает одно обновление от вебхука Telegram.
+    Эта функция вызывается эндпоинтом вебхука в main.py.
+    """
+    if not application:
+        logger.warning("Бот не инициализирован; обработка обновления пропущена.")
+        return
+
+    try:
+        async with application:
+            update = Update.de_json(data, application.bot)
+            await application.process_update(update)
+    except Exception:
+        logger.error("Произошла ошибка при обработке обновления Telegram.", exc_info=True)
+

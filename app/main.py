@@ -6,7 +6,7 @@ import os
 import logging
 import asyncio
 from dotenv import load_dotenv
-from .telegram_integration import start_bot
+from .telegram_integration import start_bot, stop_bot, process_telegram_update
 from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
 import json
@@ -101,11 +101,13 @@ async def startup_event():
         logger.error(f"Ошибка инициализации базы данных: {e}")
     
     # Запуск телеграм-бота
-    try:
-        await start_bot()
-        logger.info("Телеграм бот запущен")
-    except Exception as e:
-        logger.error(f"Ошибка запуска телеграм бота: {e}")
+    # Запускаем в фоне, чтобы не блокировать запуск FastAPI
+    asyncio.create_task(start_bot())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Остановка приложения"""
+    await stop_bot()
 
 # Добавляем CORS middleware
 # Настройка разрешенных доменов для CORS
@@ -243,25 +245,21 @@ async def test_endpoint():
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
     """Webhook для обработки сообщений от Telegram"""
+    if not IS_PRODUCTION:
+        logger.warning("Вебхук получен в режиме разработки, игнорируется.")
+        return {"status": "ignored_in_dev"}
+        
     try:
-        # Получаем JSON данные от Telegram
         update_data = await request.json()
-        
-        # Импортируем telegram обработку
-        from .telegram_integration import bot_instance
-        
-        if bot_instance.app:
-            # Обрабатываем обновление через telegram bot
-            from telegram import Update
-            update = Update.de_json(update_data, bot_instance.app.bot)
-            await bot_instance.app.process_update(update)
-            return {"status": "ok"}
-        else:
-            return {"status": "bot_not_ready"}
-            
+        await process_telegram_update(update_data)
+        return {"status": "ok"}
+    except json.JSONDecodeError:
+        logger.error("Ошибка декодирования JSON от Telegram.")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
     except Exception as e:
-        logger.error(f"Ошибка обработки telegram webhook: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Ошибка обработки telegram webhook: {e}", exc_info=True)
+        # Возвращаем 200, чтобы Telegram не повторял отправку
+        return {"status": "error", "message": "Internal server error"}
 
 @app.get("/api/campaigns")
 async def get_campaigns():
