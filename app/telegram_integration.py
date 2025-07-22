@@ -2,8 +2,8 @@ import asyncio
 import os
 import logging
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # Загрузка переменных окружения из .env файла для локальной разработки
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -18,15 +18,64 @@ logger = logging.getLogger(__name__)
 # Глобальная переменная для хранения экземпляра приложения
 application: Application | None = None
 
+user_states = {}
+
 async def start_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет приветственное сообщение в ответ на команду /start."""
+    """Отправляет приветственное сообщение с кнопками в ответ на команду /start."""
+    keyboard = [
+        [InlineKeyboardButton("🎨 Создать кампанию", callback_data="create_campaign")],
+        [InlineKeyboardButton("🌐 Веб-интерфейс", url="https://target-ai-prlm.onrender.com")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     welcome_message = (
         "🎯 *Target AI Bot*\n\n"
         "Добро пожаловать! Я помогу вам проанализировать рекламные креативы.\n\n"
-        "Просто отправьте мне изображение или видео, чтобы начать. "
-        "Для получения дополнительных возможностей используйте веб-интерфейс."
+        "Нажмите кнопку ниже, чтобы начать создание кампании, или воспользуйтесь веб-интерфейсом."
     )
-    await update.message.reply_text(welcome_message, parse_mode='Markdown')
+    await update.message.reply_text(welcome_message, parse_mode='Markdown', reply_markup=reply_markup)
+
+async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    if query.data == "create_campaign":
+        user_states[user_id] = {"state": "awaiting_media"}
+        await query.answer()
+        await query.edit_message_text(
+            text="🎨 *Создание новой кампании*\n\nЗагрузите изображение или видео вашего креатива.",
+            parse_mode='Markdown'
+        )
+    else:
+        await query.answer()
+
+async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    state = user_states.get(user_id, {}).get("state")
+    if state != "awaiting_media":
+        await update.message.reply_text("Сначала нажмите 'Создать кампанию' в меню.")
+        return
+    await update.message.reply_text("📊 Анализирую ваш креатив...")
+    try:
+        if update.message.photo:
+            file = await update.message.photo[-1].get_file()
+            file_name = f"image_{user_id}.jpg"
+        elif update.message.video:
+            file = await update.message.video.get_file()
+            file_name = f"video_{user_id}.mp4"
+        else:
+            await update.message.reply_text("Пожалуйста, загрузите изображение или видео.")
+            return
+        file_bytes = await file.download_as_bytearray()
+        # Здесь должен быть реальный анализ, пока мок
+        analysis_result = await analyze_media_mock(file_bytes, file_name)
+        user_states[user_id]["analysis"] = analysis_result
+        user_states[user_id]["state"] = "analysis_complete"
+        await update.message.reply_text(f"Результат анализа: {analysis_result}")
+    except Exception as e:
+        logger.error(f"Ошибка обработки медиа: {e}")
+        await update.message.reply_text(f"Ошибка обработки файла: {str(e)}")
+
+async def analyze_media_mock(file_bytes, filename):
+    return {"status": "success", "filename": filename}
 
 async def start_bot():
     """
@@ -42,8 +91,11 @@ async def start_bot():
         builder = Application.builder().token(TELEGRAM_TOKEN)
         application = builder.build()
 
-        # Добавление обработчиков команд
+
+        # Добавление обработчиков команд и событий
         application.add_handler(CommandHandler("start", start_command_handler))
+        application.add_handler(CallbackQueryHandler(callback_query_handler))
+        application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
         # Инициализация приложения
         await application.initialize()
