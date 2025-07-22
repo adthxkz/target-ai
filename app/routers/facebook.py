@@ -7,7 +7,7 @@ from datetime import datetime
 
 from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
-from facebook_business.adobjects.aduser import AdUser
+from facebook_business.adobjects.user import User as AdUser
 from facebook_business.adobjects.campaign import Campaign
 from facebook_business.exceptions import FacebookRequestError
 
