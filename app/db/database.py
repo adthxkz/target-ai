@@ -7,6 +7,9 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/ads_management.db")
 if DATABASE_URL.startswith("sqlite:///"):
+    # Для SQLite убедимся, что директория существует
+    db_file_path = DATABASE_URL.split("///")[1]
+    os.makedirs(os.path.dirname(db_file_path), exist_ok=True)
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
 else:
     ASYNC_DATABASE_URL = DATABASE_URL

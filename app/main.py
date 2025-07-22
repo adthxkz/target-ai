@@ -2,16 +2,15 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
-import os
 import logging
 import asyncio
 import httpx
-from dotenv import load_dotenv
-from .telegram_integration import start_bot, stop_bot, process_telegram_update
-from facebook_business.api import FacebookAdsApi
-from facebook_business.adobjects.adaccount import AdAccount
 import json
+
+from .config import settings
+from .telegram_integration import start_bot, stop_bot, process_telegram_update
 from .db.database import init_db
+from .routers import facebook
 
 # Попытка импорта новых сервисов с обработкой ошибок
 try:
@@ -29,57 +28,15 @@ from typing import Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Загрузка переменных окружения (только для локальной разработки)
-if os.path.exists(".env"):
-    load_dotenv()
-
-# Получение настроек Facebook
-FB_APP_ID = os.getenv("FACEBOOK_APP_ID")
-FB_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET")
-# Динамическое определение REDIRECT_URI на основе окружения
-IS_PRODUCTION = os.getenv("RENDER", "false").lower() == "true"
-IS_MOCK_MODE = os.getenv("MOCK_MODE", "true").lower() == "true"  # Временный режим разработки
-BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
-FB_REDIRECT_URI = f"{BASE_URL}/auth/facebook/callback"
-FB_SCOPE = "ads_management,ads_read"
-
-# Тестовые данные для разработки
-MOCK_CAMPAIGNS = [
-    {
-        "id": "123456789",
-        "name": "Test Campaign 1",
-        "status": "ACTIVE",
-        "objective": "CONVERSIONS",
-        "daily_budget": 1000,
-        "lifetime_budget": 10000,
-        "start_time": "2025-07-01T00:00:00+0000",
-        "end_time": "2025-07-31T23:59:59+0000"
-    },
-    {
-        "id": "987654321",
-        "name": "Test Campaign 2",
-        "status": "PAUSED",
-        "objective": "TRAFFIC",
-        "daily_budget": 500,
-        "lifetime_budget": 5000,
-        "start_time": "2025-07-15T00:00:00+0000",
-        "end_time": "2025-08-15T23:59:59+0000"
-    }
-]
-
-MOCK_AD_ACCOUNT = {
-    "id": "act_123456789",
-    "name": "Test Ad Account",
-    "currency": "USD",
-    "timezone_name": "America/Los_Angeles"
-}
-
 # Инициализация приложения
 app = FastAPI(
     title="Target AI API",
     description="API для управления рекламными кампаниями в Facebook",
     version="1.0.0"
 )
+
+# Подключение роутеров
+app.include_router(facebook.router)
 
 # Инициализация сервисов только если они доступны
 if SERVICES_AVAILABLE:
@@ -102,7 +59,6 @@ async def startup_event():
         logger.error(f"Ошибка инициализации базы данных: {e}")
     
     # Запуск телеграм-бота
-    # Запускаем в фоне, чтобы не блокировать запуск FastAPI
     asyncio.create_task(start_bot())
 
 @app.on_event("shutdown")
@@ -111,16 +67,13 @@ async def shutdown_event():
     await stop_bot()
 
 # Добавляем CORS middleware
-# Настройка разрешенных доменов для CORS
-allowed_origins = [
-    BASE_URL,
-    "http://localhost:3000",  # для локальной разработки
-    "https://target-ai-prlm.onrender.com",  # для продакшена
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        settings.BASE_URL,
+        "http://localhost:3000",
+        "https://target-ai-prlm.onrender.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -145,118 +98,22 @@ async def root():
         "endpoints": {
             "docs": "/docs",
             "health": "/health",
-            "auth": "/auth/facebook",
-            "campaigns": "/api/campaigns",
+            "auth": "/api/facebook/auth",
+            "campaigns": "/api/facebook/campaigns",
             "analyze": "/api/analyze-media",
             "workflow": "/api/workflow/demo"
         }
     }
-
-@app.get("/auth/facebook")
-async def facebook_auth():
-    """Начало процесса авторизации Facebook"""
-    logger.info(f"Starting Facebook auth process. REDIRECT_URI: {FB_REDIRECT_URI}")
-    
-    if IS_MOCK_MODE:
-        logger.info("Using mock mode - redirecting to mock callback")
-        return RedirectResponse(url=f"{BASE_URL}/auth/facebook/callback?code=mock_code")
-        
-    if not FB_APP_ID or not FB_APP_SECRET:
-        logger.error("Missing Facebook credentials")
-        raise HTTPException(status_code=500, detail="Facebook credentials not configured")
-    
-    auth_url = f"https://www.facebook.com/v17.0/dialog/oauth?client_id={FB_APP_ID}&redirect_uri={FB_REDIRECT_URI}&scope={FB_SCOPE}"
-    logger.info(f"Redirecting to Facebook auth URL: {auth_url}")
-    return RedirectResponse(url=auth_url)
-
-@app.get("/auth/facebook/callback")
-async def facebook_callback(code: str = None, error: str = None):
-    """Обработка callback от Facebook"""
-    logger.info("Received Facebook callback")
-    
-    if error:
-        logger.error(f"Facebook OAuth error: {error}")
-        raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
-    
-    if not code:
-        logger.error("No code provided in callback")
-        raise HTTPException(status_code=400, detail="No code provided")
-        
-    if IS_MOCK_MODE and code == "mock_code":
-        logger.info("Mock mode - returning test data")
-        return JSONResponse({
-            "status": "success",
-            "access_token": "mock_access_token_123",
-            "accounts": [MOCK_AD_ACCOUNT],
-            "campaigns": MOCK_CAMPAIGNS
-        })
-    
-    # Получаем access token
-    token_url = f"https://graph.facebook.com/v17.0/oauth/access_token"
-    params = {
-        "client_id": FB_APP_ID,
-        "client_secret": FB_APP_SECRET,
-        "redirect_uri": FB_REDIRECT_URI,
-        "code": code
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.get(token_url, params=params)
-    
-    if response.status_code != 200:
-        logger.error(f"Failed to get access token: {response.text}")
-        raise HTTPException(status_code=400, detail="Failed to get access token")
-    
-    token_data = response.json()
-    access_token = token_data.get("access_token")
-    
-    # Инициализируем Facebook API
-    FacebookAdsApi.init(FB_APP_ID, FB_APP_SECRET, access_token)
-    
-    # Получаем список рекламных аккаунтов
-    try:
-        async with httpx.AsyncClient() as client:
-            me_response = await client.get(f"https://graph.facebook.com/v17.0/me/adaccounts", 
-                                          params={"access_token": access_token, "fields": "id,name,currency,timezone_name"})
-        
-        me_response.raise_for_status()
-        accounts = me_response.json().get("data", [])
-        
-        # Анализируем рекламные кампании для первого аккаунта
-        if accounts:
-            # Этот вызов остается синхронным, так как facebook_business SDK не является полностью асинхронным
-            # Для полной асинхронности потребовалась бы замена SDK или прямые вызовы API через httpx
-            account = AdAccount(accounts[0]["id"])
-            campaigns = account.get_campaigns(fields=["name", "status", "objective"])
-            return JSONResponse({
-                "status": "success",
-                "access_token": access_token,
-                "accounts": accounts,
-                "campaigns": [campaign.export_all_data() for campaign in campaigns]
-            })
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error while getting ad accounts: {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail="Failed to get ad accounts from Facebook")
-    except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return JSONResponse({"status": "error", "message": "No ad accounts found"})
 
 @app.get("/health")
 async def health_check():
     """Проверка работоспособности API"""
     return {"status": "healthy", "timestamp": str(datetime.now())}
 
-@app.get("/test")
-async def test_endpoint():
-    """Тестовый эндпоинт"""
-    return {"message": "Test endpoint works!", "timestamp": str(datetime.now())}
-
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
     """Webhook для обработки сообщений от Telegram"""
-    if not IS_PRODUCTION:
+    if not settings.RENDER:
         logger.warning("Вебхук получен в режиме разработки, игнорируется.")
         return {"status": "ignored_in_dev"}
         
@@ -271,20 +128,6 @@ async def telegram_webhook(request: Request):
         logger.error(f"Ошибка обработки telegram webhook: {e}", exc_info=True)
         # Возвращаем 200, чтобы Telegram не повторял отправку
         return {"status": "error", "message": "Internal server error"}
-
-@app.get("/api/campaigns")
-async def get_campaigns():
-    """Получение списка рекламных кампаний (тестовые данные)"""
-    if not IS_MOCK_MODE:
-        raise HTTPException(status_code=501, detail="Only available in mock mode")
-    return JSONResponse({"campaigns": MOCK_CAMPAIGNS})
-
-@app.get("/api/ad-account")
-async def get_ad_account():
-    """Получение информации о рекламном аккаунте (тестовые данные)"""
-    if not IS_MOCK_MODE:
-        raise HTTPException(status_code=501, detail="Only available in mock mode")
-    return JSONResponse({"account": MOCK_AD_ACCOUNT})
 
 @app.post("/api/analyze-media")
 async def analyze_media(
