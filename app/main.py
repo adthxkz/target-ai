@@ -49,7 +49,7 @@ async def shutdown_event():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        settings.BASE_URL,
+        settings.RENDER_EXTERNAL_URL,
         "http://localhost:3000",
         "https://target-ai-prlm.onrender.com",
     ],
